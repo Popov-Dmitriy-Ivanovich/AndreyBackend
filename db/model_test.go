@@ -1,11 +1,14 @@
 package db
 
 import (
-	_ "fmt" 
+	// "fmt"
+	_ "fmt"
 	"testing"
-	
+
+	// "gorm.io/gen"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	// "gorm.io/clause"
 )
 
 func clearTable[T any](db *gorm.DB) error {
@@ -162,5 +165,23 @@ func TestFK( t *testing.T) {
 		}
 		//t.Error()
 		// db.Commit()
+	})
+	db, err = InitDb()
+	if db == nil || err != nil {
+		t.Fatal("db initialization failed")
+	}
+	t.Run("test cascade delete discount", func (t *testing.T) {
+		discount := &Discount{}
+		db.First(discount)
+		// fmt.Print(discount)
+		product := &Product{}
+		db.First(product, discount.ProductId)
+		db.Select("discounts").Delete(product)
+		//db.Delete(product)
+		foundDiscounts := []Discount{};
+		db.Find(&foundDiscounts,&Discount{Product: *product})
+		if len(foundDiscounts) != 0 {
+			t.Error("Discount not deleted after product delete")
+		}
 	})
 }
