@@ -1,5 +1,6 @@
-package models
+package discounts
 import (
+	"models/types"
 	"gorm.io/gorm"
 	"time"
 )
@@ -7,7 +8,7 @@ import (
 type Discount struct {
 	gorm.Model
 	ProductID      *uint
-	NewPrice       PriceType
+	NewPrice       types.PriceType
 	Style          string
 	ExpirationDate time.Time
 	// Product        Product `gorm:"foreignKey:ProductId;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`

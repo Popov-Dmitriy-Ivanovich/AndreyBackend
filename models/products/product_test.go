@@ -1,9 +1,9 @@
-package models
+package products
 
 import (
 	"testing"
 	"models/discounts"
-	"models/products"
+	// "models/products"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -31,15 +31,15 @@ func InitDb() (*gorm.DB, error) {
 		return nil, err
 	}
 	db.AutoMigrate(
-		&products.Product{},
+		&Product{},
 		&discounts.Discount{},
 	)
 
-	clearTable[products.Product](db)
+	clearTable[Product](db)
 	clearTable[discounts.Discount](db)
 	
 	discounts := []discounts.Discount{discounts.Discount{NewPrice: 0.69, Style: "Fancy"}}
-	product := products.Product{Name: "test_product", Price: 1.69, IsActive: true, Discounts: discounts}
+	product := Product{Name: "test_product", Price: 1.69, IsActive: true, Discounts: discounts}
 
 	productCreateRes := db.Create(&product)
 	if (productCreateRes.Error != nil){
@@ -57,7 +57,7 @@ func TestProductWithDisount (t *testing.T) {
 	}
 	discount := discounts.Discount{}
 	db.First(&discount)
-	product := products.Product{}
+	product := Product{}
 	db.First(&product, discount.ProductID)
 	db.Delete(&product)
 	foundDiscounts := []discounts.Discount{}
@@ -65,8 +65,4 @@ func TestProductWithDisount (t *testing.T) {
 	if (len(foundDiscounts) != 0) {
 		t.Error("Discounts are not deleted after deleted product")
 	}
-}
-
-func ProductAndCategory (t *testing.T) {
-	t.Error("huy")
 }
