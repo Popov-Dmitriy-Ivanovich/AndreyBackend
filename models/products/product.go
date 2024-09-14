@@ -29,6 +29,9 @@ type Product struct {
 	Media       []productmedia.ProductMedia
 	Collection  []*Collection `gorm:"many2many:product_collections"`
 	Advert      []*Advert     `gorm:"many2many:advert_products"`
+	Categories  []*Category   `gorm:"many2many:product_categories"`
+	Reviews 	[]Review
+	Carts		[]*Cart		  `gomr:"many2many:product_carts"`
 }
 
 type Collection struct {
@@ -57,6 +60,49 @@ type AdvertProduct struct {
 	AdvertID  uint `gorm:"primaryKey"`
 }
 
+type Category struct {
+	gorm.Model
+	Name           string
+	Description    string
+	ParentCategory *Category `gorm:"foreignKey:ParentID"`
+	ParentID       *uint
+	Picture        types.DbFile
+	Products       []*Product `gorm:"many2many:product_categories"`
+}
+
+type ProductCategory struct {
+	ProductID  uint `gorm:"primaryKey"`
+	CategoryID uint `gorm:"primaryKey"`
+}
+
+type Review struct {
+	gorm.Model
+	ProductID uint
+	UserID uint
+	Text string
+	Stars uint
+}
+
+type ProductCart struct {
+	ProductID uint `gorm:"primaryKey"`
+	CartID uint `gorm:"primaryKey"`
+}
+
+type Cart struct {
+	gorm.Model
+	UserID uint
+	Product []*Product `gorm:"many2many:product_carts"`
+}
+
+func (category *Category) AfterDelete(db *gorm.DB) error {
+	res := db.Where("category_id = ?", category.ID).Delete(&ProductCategory{})
+	if res.Error != nil {
+		return res.Error
+	}
+	res = db.Model(&Category{}).Where("parent_id = ?", category.ID).Update("parent_id", nil)
+	return res.Error
+}
+
 func (prod *Product) AfterDelete(db *gorm.DB) error {
 	//return nil
 
@@ -73,8 +119,23 @@ func (prod *Product) AfterDelete(db *gorm.DB) error {
 	if res.Error != nil {
 		return res.Error
 	}
-	
+
 	res = db.Where("product_id = ?", prod.ID).Delete(&AdvertProduct{})
+	if res.Error != nil {
+		return res.Error
+	}
+	res = db.Where("product_id = ?", prod.ID).Delete(&ProductCategory{})
+
+	if res.Error != nil {
+		return res.Error
+	}
+
+	res = db.Where("product_id = ?", prod.ID).Delete(&Review{})
+	if res.Error != nil {
+		return res.Error
+	}
+	
+	res = db.Where("product_id = ?", prod.ID).Delete(&ProductCart{})
 	// res = db.Delete(&ProductCollection{}, &ProductCollection{ProductID: prod.ID})
 
 	return res.Error
@@ -87,5 +148,10 @@ func (collection *Collection) AfterDelete(db *gorm.DB) error {
 
 func (advert *Advert) AfterDelete(db *gorm.DB) error {
 	res := db.Where("advert_id = ?", advert.ID).Delete(&AdvertProduct{})
+	return res.Error
+}
+
+func (cart *Cart) AfterDelete (db *gorm.DB) error {
+	res := db.Where("cart_id = ?", cart.ID).Delete(&ProductCart{})
 	return res.Error
 }
