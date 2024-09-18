@@ -40,6 +40,7 @@ func InitDb() (*gorm.DB, error) {
 		&productmedia.ProductMedia{},
 		&Collection{},
 		&Category{},
+		&Cart{},
 	)
 
 	clearTable[Product](db)
@@ -48,6 +49,7 @@ func InitDb() (*gorm.DB, error) {
 	clearTable[Collection](db)
 	clearTable[Advert](db)
 	clearTable[Category](db)
+	clearTable[Cart](db)
 	discounts := []discounts.Discount{discounts.Discount{NewPrice: 0.69, Style: "Fancy"}}
 	productMedia := []productmedia.ProductMedia{productmedia.ProductMedia{File: types.DbFile{""}}}
 
@@ -56,6 +58,7 @@ func InitDb() (*gorm.DB, error) {
 	advert := Advert{AdvertText: "test", Products: []*Product{&product}}
 	category := Category{Name: "test", Products: []*Product{&product}}
 	chldCategory := Category {Name: "test child", ParentCategory: &category, Products: []*Product{&product}}
+	cart := Cart{Product: []*Product{&product}};
 	productCreateRes := db.Create(&product)
 	if productCreateRes.Error != nil {
 		return nil, productCreateRes.Error
@@ -79,6 +82,11 @@ func InitDb() (*gorm.DB, error) {
 	chldCategoryCreateRes := db.Create(&chldCategory)
 	if chldCategoryCreateRes.Error != nil {
 		return nil, chldCategoryCreateRes.Error
+	}
+
+	cartCreateRes := db.Create(&cart)
+	if cartCreateRes.Error != nil {
+		return nil, cartCreateRes.Error
 	}
 	// db.Commit()
 	return db, nil
@@ -254,5 +262,27 @@ func TestProductCategoryDelete(t *testing.T) {
 	db.Where("product_id = ?", product.ID).Find(&foundProductCategories)
 	if len(foundProductCategories) != 0{
 		t.Error("product categories transaction unconsistent after product delete")
+	}
+}
+
+func TestCartDelete(t *testing.T) {
+	db, err := InitDb()
+	if db == nil || err != nil {
+		t.Fatal("CouldNotCreateDB")
+	}
+
+	cart := Cart{}
+	db.First(&cart)
+
+	foundTransactions := []ProductCart{}
+	db.Where("cart_id = ?", cart.ID).Find(foundTransactions)
+	if len(foundTransactions) == 0 {
+		t.Error("Cart to product trasnactions not found")
+	}
+	db.Delete(&cart)
+
+	db.Where("cart_id = ?", cart.ID).Find(foundTransactions)
+	if len(foundTransactions) != 0 {
+		t.Error("Cart to product trasnactions not deleted after cart delete")
 	}
 }

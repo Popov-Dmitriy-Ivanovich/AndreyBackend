@@ -2,6 +2,7 @@ module models
 
 go 1.22.5
 
+
 require (
 	gorm.io/driver/sqlite v1.5.6
 	gorm.io/gorm v1.25.11
