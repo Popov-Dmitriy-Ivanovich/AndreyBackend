@@ -48,11 +48,55 @@ input NewCollection {
     productIds : [ID]!
 }
 
+type ProductMedia {
+    product: Product!
+    file: String!
+}
+
+input NewProductMedia {
+    productId: ID!
+    file: String!
+}
+
+type Advert {
+    expirationDate: String!
+    text: String!
+    style: String!
+    products: [Product]!
+}
+
+input NewAdvert {
+    expirationDate: String!
+    text: String!
+    style: String!
+    productIds: [ID]!
+}
+
+type Category {
+    id: ID!
+    name: String!
+    description: String!
+    parentId: ID!
+    picture: String!
+    products: [Product]
+}
+
+input NewCategory {
+    name: String!
+    description: String!
+    parentId: ID
+    picture: String!
+    
+}
+
 type Query {
   todos: [Todo!]!
   discounts: [Discount]!
   products: [Product]!
   collections: [Collection]!
+  productMedias: [ProductMedia]!
+  adverts: [Advert]!
+  category: [Category]!
 }
 
 input NewTodo {
@@ -75,6 +119,7 @@ input NewProduct {
     isActive: Boolean!
     count: Int!
     picture: String!
+    categoriesId: [ID]
 }
 
 type Mutation {
@@ -82,4 +127,7 @@ type Mutation {
   createDiscount (input: NewDiscount!): Discount!
   createProduct (input: NewProduct): Product!
   createCollection (input: NewCollection): Collection!
+  createProductMedia (input: NewProductMedia): ProductMedia!
+  createAdvert(input: NewAdvert): Advert!
+  createCategory(input: NewCategory): Category!
 }

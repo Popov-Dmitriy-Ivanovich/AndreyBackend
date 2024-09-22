@@ -2,6 +2,22 @@
 
 package model
 
+type Advert struct {
+	ExpirationDate string     `json:"expirationDate"`
+	Text           string     `json:"text"`
+	Style          string     `json:"style"`
+	Products       []*Product `json:"products"`
+}
+
+type Category struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	ParentID    string     `json:"parentId"`
+	Picture     string     `json:"picture"`
+	Products    []*Product `json:"products,omitempty"`
+}
+
 type Collection struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`
@@ -21,6 +37,20 @@ type Discount struct {
 type Mutation struct {
 }
 
+type NewAdvert struct {
+	ExpirationDate string    `json:"expirationDate"`
+	Text           string    `json:"text"`
+	Style          string    `json:"style"`
+	ProductIds     []*string `json:"productIds"`
+}
+
+type NewCategory struct {
+	Name        string  `json:"name"`
+	Description string  `json:"description"`
+	ParentID    *string `json:"parentId,omitempty"`
+	Picture     string  `json:"picture"`
+}
+
 type NewCollection struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
@@ -36,12 +66,18 @@ type NewDiscount struct {
 }
 
 type NewProduct struct {
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Price       float64 `json:"price"`
-	IsActive    bool    `json:"isActive"`
-	Count       int     `json:"count"`
-	Picture     string  `json:"picture"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	Price        float64   `json:"price"`
+	IsActive     bool      `json:"isActive"`
+	Count        int       `json:"count"`
+	Picture      string    `json:"picture"`
+	CategoriesID []*string `json:"categoriesId,omitempty"`
+}
+
+type NewProductMedia struct {
+	ProductID string `json:"productId"`
+	File      string `json:"file"`
 }
 
 type NewTodo struct {
@@ -58,6 +94,11 @@ type Product struct {
 	Count       int         `json:"count"`
 	Picture     string      `json:"picture"`
 	Discounts   []*Discount `json:"discounts"`
+}
+
+type ProductMedia struct {
+	Product *Product `json:"product"`
+	File    string   `json:"file"`
 }
 
 type Query struct {
