@@ -1,6 +1,6 @@
 package discounts
 import (
-	"models/types"
+	"backend/models/types"
 	"gorm.io/gorm"
 	"time"
 )

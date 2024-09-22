@@ -1,0 +1,85 @@
+# GraphQL schema example
+#
+# https://gqlgen.com/getting-started/
+
+type Todo {
+  id: ID!
+  text: String!
+  done: Boolean!
+  user: User!
+}
+
+type User {
+  id: ID!
+  name: String!
+}
+
+type Discount {
+    id: ID!
+    productId: ID!
+    newPrice: Float!
+    style: String!
+    ExpirationDate: String!
+}
+
+type Product {
+    id: ID!
+    name: String!
+    description: String!
+    price: Float!
+    isActive: Boolean!
+    count: Int!
+    picture: String!
+    discounts: [Discount]!
+}
+
+type Collection {
+    id: ID!
+    name: String!
+    description: String!
+    picture: String!
+    products: [Product]!
+}
+
+input NewCollection {
+    name: String!
+    description: String!
+    picture: String!
+    productIds : [ID]!
+}
+
+type Query {
+  todos: [Todo!]!
+  discounts: [Discount]!
+  products: [Product]!
+  collections: [Collection]!
+}
+
+input NewTodo {
+  text: String!
+  userId: String!
+}
+
+input NewDiscount {
+    # id: ID!
+    productId: ID!
+    newPrice: Float!
+    style: String!
+    ExpirationDate: String!
+}
+
+input NewProduct {
+    name: String!
+    description: String!
+    price: Float!
+    isActive: Boolean!
+    count: Int!
+    picture: String!
+}
+
+type Mutation {
+  createTodo(input: NewTodo!): Todo!
+  createDiscount (input: NewDiscount!): Discount!
+  createProduct (input: NewProduct): Product!
+  createCollection (input: NewCollection): Collection!
+}

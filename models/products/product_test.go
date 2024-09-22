@@ -2,9 +2,9 @@ package products
 
 import (
 	"fmt"
-	"models/discounts"
-	"models/productmedia"
-	"models/types"
+	"backend/models/discounts"
+	"backend/models/productmedia"
+	"backend/models/types"
 	"testing"
 
 	// "models/products"
@@ -41,6 +41,7 @@ func InitDb() (*gorm.DB, error) {
 		&Collection{},
 		&Category{},
 		&Cart{},
+		&Review{},
 	)
 
 	clearTable[Product](db)
@@ -52,13 +53,16 @@ func InitDb() (*gorm.DB, error) {
 	clearTable[Cart](db)
 	discounts := []discounts.Discount{discounts.Discount{NewPrice: 0.69, Style: "Fancy"}}
 	productMedia := []productmedia.ProductMedia{productmedia.ProductMedia{File: types.DbFile{""}}}
+	
+	review := Review{Text: "string"}
 
-	product := Product{Name: "test_product", Price: 1.69, IsActive: true, Discounts: discounts, Media: productMedia}
+	product := Product{Name: "test_product", Price: 1.69, IsActive: true, Discounts: discounts, Media: productMedia, Reviews: []Review{review}}
 	collection := Collection{Name: "test collection", Products: []*Product{&product}}
 	advert := Advert{AdvertText: "test", Products: []*Product{&product}}
 	category := Category{Name: "test", Products: []*Product{&product}}
 	chldCategory := Category {Name: "test child", ParentCategory: &category, Products: []*Product{&product}}
 	cart := Cart{Product: []*Product{&product}};
+	
 	productCreateRes := db.Create(&product)
 	if productCreateRes.Error != nil {
 		return nil, productCreateRes.Error
@@ -88,6 +92,7 @@ func InitDb() (*gorm.DB, error) {
 	if cartCreateRes.Error != nil {
 		return nil, cartCreateRes.Error
 	}
+
 	// db.Commit()
 	return db, nil
 }
@@ -275,13 +280,13 @@ func TestCartDelete(t *testing.T) {
 	db.First(&cart)
 
 	foundTransactions := []ProductCart{}
-	db.Where("cart_id = ?", cart.ID).Find(foundTransactions)
+	db.Where("cart_id = ?", cart.ID).Find(&foundTransactions)
 	if len(foundTransactions) == 0 {
 		t.Error("Cart to product trasnactions not found")
 	}
 	db.Delete(&cart)
 
-	db.Where("cart_id = ?", cart.ID).Find(foundTransactions)
+	db.Where("cart_id = ?", cart.ID).Find(&foundTransactions)
 	if len(foundTransactions) != 0 {
 		t.Error("Cart to product trasnactions not deleted after cart delete")
 	}

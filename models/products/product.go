@@ -6,9 +6,9 @@ import (
 	// "log"
 	"time"
 
-	"models/discounts"
-	"models/productmedia"
-	"models/types"
+	"backend/models/discounts"
+	"backend/models/productmedia"
+	"backend/models/types"
 
 	"gorm.io/gorm"
 	// "gorm.io/gorm/clause"
@@ -31,7 +31,7 @@ type Product struct {
 	Advert      []*Advert     `gorm:"many2many:advert_products"`
 	Categories  []*Category   `gorm:"many2many:product_categories"`
 	Reviews 	[]Review
-	Carts		[]*Cart		  `gomr:"many2many:product_carts"`
+	Carts		[]*Cart		  `gorm:"many2many:product_carts"`
 }
 
 type Collection struct {

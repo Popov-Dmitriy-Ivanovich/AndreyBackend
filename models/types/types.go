@@ -7,7 +7,7 @@ import (
 	"database/sql/driver"
 )
 
-type PriceType float32
+type PriceType float64
 
 type DbFile struct {
 	Path string

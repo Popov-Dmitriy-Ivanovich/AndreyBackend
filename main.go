@@ -2,9 +2,9 @@ package main
 
 import (
 	// "backend/db"
-	"backend/gql"
+	// "backend/gql"
 )
 
 func main () {
-	gql.RunServer()
+	// gql.RunServer()
 }
