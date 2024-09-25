@@ -25,7 +25,7 @@ func (r *mutationResolver) CreateTodo(ctx context.Context, input model.NewTodo) 
 // CreateDiscount is the resolver for the createDiscount field.
 func (r *mutationResolver) CreateDiscount(ctx context.Context, input model.NewDiscount) (*model.Discount, error) {
 	if r.IsAdmin != true {
-		return	nil, errors.New("access denied")
+		return nil, errors.New("access denied")
 	}
 	prodId, err := strconv.ParseUint(input.ProductID, 10, 64)
 	if err != nil {
@@ -47,7 +47,7 @@ func (r *mutationResolver) CreateDiscount(ctx context.Context, input model.NewDi
 // CreateProduct is the resolver for the createProduct field.
 func (r *mutationResolver) CreateProduct(ctx context.Context, input *model.NewProduct) (*model.Product, error) {
 	if r.IsAdmin != true {
-		return	nil, errors.New("access denied")
+		return nil, errors.New("access denied")
 	}
 	foundCat := []*products.Category{}
 	r.Db.Where("id in ?", input.CategoriesID).Find(&foundCat)
@@ -59,7 +59,7 @@ func (r *mutationResolver) CreateProduct(ctx context.Context, input *model.NewPr
 		IsActive:    input.IsActive,
 		Count:       uint64(input.Count),
 		Picture:     types.DbFile{Path: input.Picture},
-		Categories: foundCat,
+		Categories:  foundCat,
 	}
 	db := r.Db
 	res := db.Create(&newProd)
@@ -69,7 +69,7 @@ func (r *mutationResolver) CreateProduct(ctx context.Context, input *model.NewPr
 // CreateCollection is the resolver for the createCollection field.
 func (r *mutationResolver) CreateCollection(ctx context.Context, input *model.NewCollection) (*model.Collection, error) {
 	if r.IsAdmin != true {
-		return	nil, errors.New("access denied")
+		return nil, errors.New("access denied")
 	}
 	prodIds := make([][]uint, 0, len(input.ProductIds))
 	for _, el := range input.ProductIds {
@@ -99,7 +99,7 @@ func (r *mutationResolver) CreateCollection(ctx context.Context, input *model.Ne
 // CreateProductMedia is the resolver for the createProductMedia field.
 func (r *mutationResolver) CreateProductMedia(ctx context.Context, input *model.NewProductMedia) (*model.ProductMedia, error) {
 	if r.IsAdmin != true {
-		return	nil, errors.New("access denied")
+		return nil, errors.New("access denied")
 	}
 	id, err := strconv.ParseUint(input.ProductID, 10, 64)
 	if err != nil {
@@ -123,7 +123,7 @@ func (r *mutationResolver) CreateProductMedia(ctx context.Context, input *model.
 // CreateAdvert is the resolver for the createAdvert field.
 func (r *mutationResolver) CreateAdvert(ctx context.Context, input *model.NewAdvert) (*model.Advert, error) {
 	if r.IsAdmin != true {
-		return	nil, errors.New("access denied")
+		return nil, errors.New("access denied")
 	}
 	foundProd := []*products.Product{}
 	res := r.Db.Where("id in ?", input.ProductIds).Find(&foundProd)
@@ -147,7 +147,7 @@ func (r *mutationResolver) CreateAdvert(ctx context.Context, input *model.NewAdv
 // CreateCategory is the resolver for the createCategory field.
 func (r *mutationResolver) CreateCategory(ctx context.Context, input *model.NewCategory) (*model.Category, error) {
 	if r.IsAdmin != true {
-		return	nil, errors.New("access denied")
+		return nil, errors.New("access denied")
 	}
 	var parentId *uint
 	parentId = nil

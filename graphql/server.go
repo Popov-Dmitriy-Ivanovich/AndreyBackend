@@ -1,21 +1,24 @@
-package main
+package graphql
 
 import (
+	"backend/models/articles"
 	"backend/models/discounts"
 	"backend/models/productmedia"
 	"backend/models/products"
-	"encoding/json"
+	"backend/models/users"
+
+	// "encoding/json"
 	"graphql/graph"
-	"io"
+	// "io"
 	//"log"
-	"net/http"
+	// "net/http"
 	"os"
 	"sync"
 	"time"
 
-	//"github.com/99designs/gqlgen/graphql/handler"
-	//"github.com/99designs/gqlgen/graphql/playground"
-	"github.com/gin-gonic/gin"
+	"github.com/99designs/gqlgen/graphql/handler"
+	// "github.com/99designs/gqlgen/graphql/playground"
+	// "github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -28,8 +31,11 @@ var globalSingletonServerDataInst *GlobalSingletonServerData = nil
 var globalSingletonServerDataInstMutex sync.Mutex
 type GlobalSingletonServerData struct {
 	Db *gorm.DB
-	Tokens MutexedData[string]
+	Tokens MutexedData[[]string]
 	JwtKey []byte
+	GqlUser *handler.Server
+	GqlAdmin *handler.Server
+	Initialized bool
 }
 
 type Claims struct {
@@ -59,55 +65,110 @@ func generateJWT() (string, error) {
     return token.SignedString(globalData.JwtKey)
 }
 
-const defaultPort = "8080"
-const DBPATH = "server.db"
-func main() {
+func InitGlobalServerData() error {
+	const DEFAULTPORT= "8080"
+	const DEFAULTDBPATH = "server.db"
+	const DEFAULTJWTKEY = "JWTKEY"
+	globalServerData := GetGlobalServerData()
+	
+	globalServerData.Tokens.Mtx.Lock()
+	defer globalServerData.Tokens.Mtx.Unlock()
+	globalServerData.Tokens.Data = make([]string, 0)
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = defaultPort
+		port = DEFAULTPORT
 	}
-	resolver := graph.Resolver{}
-	db, err := gorm.Open(sqlite.Open("server.db"), &gorm.Config{})
-	db.Create(&products.Product{Name: "TestProduct", Price: 123.123})
+	dbPath := os.Getenv("DBPATH")
+	if dbPath == "" {
+		dbPath = DEFAULTDBPATH
+	}
+	jwtKey := os.Getenv("JWTKEY")
+	if jwtKey == "" {
+		jwtKey = DEFAULTJWTKEY
+	}
+
+	globalServerData.JwtKey = []byte(jwtKey)
+
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
-		panic("Db is not open")
+		return err
 	}
-	resolver.Db = db
-	resolver.IsAdmin = false
-	resolver.Db.AutoMigrate(
+	globalServerData.Db = db
+
+	db.AutoMigrate(
 		&products.Product{},
 		&discounts.Discount{},
 		&productmedia.ProductMedia{},
 		&products.Collection{},
 		&products.Category{},
 		&products.Cart{},
+		&products.Advert{},
+		&products.Review{},
+		&articles.Article{},
+		&articles.ArticleMedia{},
+		&discounts.Discount{},
+		&productmedia.ProductMedia{},
+		&users.User{},
 	)
-	// adminResolver := graph.Resolver{Db: resolver.Db, IsAdmin: true}
-	// srv := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{Resolvers: &resolver}))
-	
-	// http.Handle("/", playground.Handler("GraphQL playground", "/query"))
-	// http.Handle("/query", srv)
 
-	// log.Printf("connect to http://localhost:%s/ for GraphQL playground", port)
-	// log.Fatal(http.ListenAndServe(":"+port, nil))
+	userResolver := graph.Resolver{Db: db, IsAdmin: false}
+	adminResolver := graph.Resolver{Db: db, IsAdmin: false}
 
-	r := gin.Default()
-	r.POST("/login", func (c *gin.Context){
-		reqBody := c.Request.Body
-		type LoginData struct {
-			Login string
-			Password string
-		}
-		if err != nil {
-			c.JSON(http.StatusTeapot, gin.H{"error": "Can't parse request body"})
-		}
-		var body LoginData
-		rowBody, errReader := io.ReadAll(reqBody)
-		if errReader != nil {
-			c.JSON(http.StatusTeapot, gin.H{"error": "Can't parse request body"})
-		}
-		json.Unmarshal(rowBody, &body)
-		c.JSON(http.StatusOK, gin.H{"login": body.Login})
-	})
-	r.Run()
+	globalServerData.GqlUser = handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{Resolvers: &userResolver}))
+	globalServerData.GqlAdmin = handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{Resolvers: &adminResolver}))
+	globalServerData.Initialized = true
+	return nil
 }
+
+const defaultPort = "8080"
+const DBPATH = "server.db"
+// func main() {
+// 	port := os.Getenv("PORT")
+// 	if port == "" {
+// 		port = defaultPort
+// 	}
+// 	resolver := graph.Resolver{}
+// 	db, err := gorm.Open(sqlite.Open("server.db"), &gorm.Config{})
+// 	db.Create(&products.Product{Name: "TestProduct", Price: 123.123})
+// 	if err != nil {
+// 		panic("Db is not open")
+// 	}
+// 	resolver.Db = db
+// 	resolver.IsAdmin = false
+// 	resolver.Db.AutoMigrate(
+// 		&products.Product{},
+// 		&discounts.Discount{},
+// 		&productmedia.ProductMedia{},
+// 		&products.Collection{},
+// 		&products.Category{},
+// 		&products.Cart{},
+// 	)
+// 	// adminResolver := graph.Resolver{Db: resolver.Db, IsAdmin: true}
+// 	srv := handler.NewDefaultServer(graph.NewExecutableSchema(graph.Config{Resolvers: &resolver}))
+	
+// 	// http.Handle("/", playground.Handler("GraphQL playground", "/query"))
+// 	// http.Handle("/query", srv)
+
+// 	// log.Printf("connect to http://localhost:%s/ for GraphQL playground", port)
+// 	// log.Fatal(http.ListenAndServe(":"+port, nil))
+
+// 	r := gin.Default()
+// 	r.POST("/login", func (c *gin.Context){
+// 		reqBody := c.Request.Body
+// 		type LoginData struct {
+// 			Login string
+// 			Password string
+// 		}
+// 		if err != nil {
+// 			c.JSON(http.StatusTeapot, gin.H{"error": "Can't parse request body"})
+// 		}
+// 		var body LoginData
+// 		rowBody, errReader := io.ReadAll(reqBody)
+// 		if errReader != nil {
+// 			c.JSON(http.StatusTeapot, gin.H{"error": "Can't parse request body"})
+// 		}
+// 		json.Unmarshal(rowBody, &body)
+// 		c.JSON(http.StatusOK, gin.H{"login": body.Login})
+// 	})
+// 	r.Run()
+// }

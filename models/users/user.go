@@ -1,8 +1,8 @@
 package users
 
 import (
-	"models/articles"
-	"models/products"
+	"backend/models/articles"
+	"backend/models/products"
 
 	"gorm.io/gorm"
 )

@@ -1,7 +1,7 @@
 package articles
 
 import (
-	"models/types"
+	"backend/models/types"
 	"gorm.io/gorm"
 )
 
