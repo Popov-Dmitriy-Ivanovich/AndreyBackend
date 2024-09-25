@@ -96,6 +96,32 @@ func Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
+func Register() gin.HandlerFunc {
+	return func (c *gin.Context) {
+		type RegisterData struct {
+			Name string
+			Login    string
+			Password string
+			Email 	 string
+		}
+		rowBody, errReader := io.ReadAll(c.Request.Body)
+		if errReader != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not parse body"})
+			return
+		}
+		registerData := RegisterData{}
+		json.Unmarshal(rowBody, &registerData)
+
+		db := graphql.GetGlobalServerData().Db
+		res := db.Create(&users.User{Name: registerData.Name, Login: registerData.Login, Password: registerData.Password, Email: registerData.Email, IsActive: true})
+		if res.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not create user"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	}
+}
+
 func AuthMiddleware(isAdmin bool) gin.HandlerFunc {
 	return func (c *gin.Context) {
 		token := c.Request.Header.Get("Authorization")
@@ -131,7 +157,9 @@ func main() {
 
 	userResolver.POST("/UserQuery", graphqlUserHandler())
 	adminResolver.POST("/AdminQuery", graphqlAdminHandler())
+	
 	unauthResolver.GET("/GQLPlayground", graphqlPlaygroundHandler())
 	unauthResolver.POST("/Login", Login)
+	unauthResolver.POST("/Register", Register())
 	resolver.Run()
 }
