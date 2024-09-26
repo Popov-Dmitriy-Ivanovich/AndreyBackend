@@ -1,8 +1,10 @@
 package main
 
 import (
+	"backend/models/products"
 	"backend/models/users"
 	"encoding/json"
+
 	// "go/token"
 	"graphql"
 	"io"
@@ -41,7 +43,7 @@ func graphqlPlaygroundHandler() gin.HandlerFunc {
 
 type Claims struct {
 	Username string `json:"username"`
-	IsAdmin bool
+	IsAdmin  bool
 	jwt.RegisteredClaims
 }
 
@@ -49,7 +51,7 @@ func generateJWT(isAdmin bool) (string, error) {
 	expirationTime := time.Now().Add(5 * time.Minute)
 	claims := &Claims{
 		Username: "username",
-		IsAdmin: isAdmin,
+		IsAdmin:  isAdmin,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 		},
@@ -87,7 +89,7 @@ func Login(c *gin.Context) {
 	}
 	token, err := generateJWT(user.IsAdmin)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError,gin.H{"error": "Could not generate token"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
 		return
 	}
 	globalServerData.Tokens.Mtx.Lock()
@@ -97,12 +99,12 @@ func Login(c *gin.Context) {
 }
 
 func Register() gin.HandlerFunc {
-	return func (c *gin.Context) {
+	return func(c *gin.Context) {
 		type RegisterData struct {
-			Name string
+			Name     string
 			Login    string
 			Password string
-			Email 	 string
+			Email    string
 		}
 		rowBody, errReader := io.ReadAll(c.Request.Body)
 		if errReader != nil {
@@ -123,26 +125,89 @@ func Register() gin.HandlerFunc {
 }
 
 func AuthMiddleware(isAdmin bool) gin.HandlerFunc {
-	return func (c *gin.Context) {
+	return func(c *gin.Context) {
 		token := c.Request.Header.Get("Authorization")
 		claims := Claims{}
-		tkn, err := jwt.ParseWithClaims(token,&claims, func(token *jwt.Token) (interface{}, error) {
-            return graphql.GetGlobalServerData().JwtKey, nil
-        })
+		tkn, err := jwt.ParseWithClaims(token, &claims, func(token *jwt.Token) (interface{}, error) {
+			return graphql.GetGlobalServerData().JwtKey, nil
+		})
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error":"Could not parse token"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not parse token"})
 			return
 		}
 		if !tkn.Valid {
 			c.JSON(http.StatusUnauthorized, gin.H{
-                "error": "unauthorized",
-            })
+				"error": "unauthorized",
+			})
 			return
 		}
 		if isAdmin && !claims.IsAdmin {
-			c.JSON(http.StatusUnauthorized, gin.H {"error":"Admin role required"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Admin role required"})
 		}
 		c.Next()
+	}
+}
+
+func GetUserCarts() gin.HandlerFunc {
+	return func(c *gin.Context) {}
+}
+
+func CreateUserCart() gin.HandlerFunc {
+	return func(c *gin.Context) {}
+}
+
+func CreateReview() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		type RequestBody struct {
+			ProductID uint
+			UserID    uint
+			Text      string
+			Stars     uint
+		}
+		ginBody := c.Request.Body
+		rowBody, errReader := io.ReadAll(ginBody)
+		if errReader != nil {
+			c.JSON(http.StatusTeapot, gin.H{"error": "Can't parse request body"})
+			return
+		}
+		body := RequestBody{}
+		json.Unmarshal(rowBody, &body)
+		user := users.User{}
+		db := graphql.GetGlobalServerData().Db
+		res := db.First(&user, body.UserID)
+
+		if res.Error != nil || res.RowsAffected == 0 {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "user not found"})
+			return
+		}
+
+		user.Reviews = append(user.Reviews, products.Review{
+			ProductID: body.ProductID,
+			UserID: user.ID,
+			Text: body.Text,
+			Stars: body.Stars,
+		})
+		resSave := db.Save(&user)
+		if resSave.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error" : "could not save user"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	}
+}
+
+func GetReview() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		query := c.Request.URL.Query()
+		productId := query.Get("productId")
+		db := graphql.GetGlobalServerData().Db
+		review := []products.Review{}
+		res := db.Where("product_id = ?", productId).Find(&review)
+		if res.Error != nil {
+			c.JSON(http.StatusInternalServerError, "db error")
+			return
+		}
+		c.JSON(http.StatusOK, review)
 	}
 }
 
@@ -150,16 +215,18 @@ func main() {
 	graphql.InitGlobalServerData()
 	// globalServerData := graphql.GetGlobalServerData()
 	resolver := gin.Default()
-	
+
 	adminResolver := resolver.Group("/Admin", AuthMiddleware(true))
 	userResolver := resolver.Group("/User", AuthMiddleware(false))
 	unauthResolver := resolver.Group("/")
 
 	userResolver.POST("/UserQuery", graphqlUserHandler())
+	userResolver.POST("/CreateReview", CreateReview())
 	adminResolver.POST("/AdminQuery", graphqlAdminHandler())
-	
+
 	unauthResolver.GET("/GQLPlayground", graphqlPlaygroundHandler())
 	unauthResolver.POST("/Login", Login)
 	unauthResolver.POST("/Register", Register())
+	unauthResolver.GET("/Review", GetReview())
 	resolver.Run()
 }
