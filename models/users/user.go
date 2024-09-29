@@ -21,6 +21,13 @@ type User struct {
 	Cart 	 *products.Cart
 }
 
+func (user *User) AfterCreate (db *gorm.DB) error {
+	cart := &products.Cart{}
+	user.Cart = cart
+	res := db.Save(user)
+	return res.Error
+}
+
 func (user *User) AfterDelete(db *gorm.DB) error {
 	res := db.Model(&articles.Article{}).Where("user_id = ?", user.ID).Update("user_id", nil)
 	if res.Error != nil {

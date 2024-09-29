@@ -43,15 +43,17 @@ func graphqlPlaygroundHandler() gin.HandlerFunc {
 
 type Claims struct {
 	Username string `json:"username"`
+	UserId uint
 	IsAdmin  bool
 	jwt.RegisteredClaims
 }
 
-func generateJWT(isAdmin bool) (string, error) {
+func generateJWT(isAdmin bool, userId uint) (string, error) {
 	expirationTime := time.Now().Add(5 * time.Minute)
 	claims := &Claims{
 		Username: "username",
 		IsAdmin:  isAdmin,
+		UserId: userId,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 		},
@@ -87,7 +89,7 @@ func Login(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "wrong password"})
 		return
 	}
-	token, err := generateJWT(user.IsAdmin)
+	token, err := generateJWT(user.IsAdmin, user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
 		return
@@ -133,12 +135,14 @@ func AuthMiddleware(isAdmin bool) gin.HandlerFunc {
 		})
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not parse token"})
+			c.Abort()
 			return
 		}
 		if !tkn.Valid {
 			c.JSON(http.StatusUnauthorized, gin.H{
 				"error": "unauthorized",
 			})
+			c.Abort()
 			return
 		}
 		if isAdmin && !claims.IsAdmin {
@@ -148,11 +152,82 @@ func AuthMiddleware(isAdmin bool) gin.HandlerFunc {
 	}
 }
 
-func GetUserCarts() gin.HandlerFunc {
-	return func(c *gin.Context) {}
+func GetUserCart() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.Request.Header.Get("Authorization")
+		claims := Claims{}
+		tkn, err := jwt.ParseWithClaims(token, &claims, func(token *jwt.Token) (interface{}, error) {
+			return graphql.GetGlobalServerData().JwtKey, nil
+		})
+		if err != nil || !tkn.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error":"unauth"})
+			return
+		}
+		userId := claims.UserId
+		db := graphql.GetGlobalServerData().Db
+		cart := products.Cart{}
+		cartRes := db.Where("user_id = ?", userId).First(&cart)
+		if cartRes.Error != nil {
+			c.JSON(http.StatusInternalServerError,gin.H{"error":"could not find user cart"})
+			return
+		}
+		prods := []*products.Product{}
+		prodRes := db.Model(&products.Product{}).Joins("inner join product_carts on products.id == product_carts.product_id").Where("cart_id = ?", cart.ID).Find(&prods)
+		if prodRes.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error":"db"})
+		}
+		c.JSON(http.StatusOK, prods)
+	}
 }
 
-func CreateUserCart() gin.HandlerFunc {
+func AddProductToCart() gin.HandlerFunc {
+	return func (c *gin.Context) {
+		token := c.Request.Header.Get("Authorization")
+		claims := Claims{}
+		tkn, err := jwt.ParseWithClaims(token, &claims, func(token *jwt.Token) (interface{}, error) {
+			return graphql.GetGlobalServerData().JwtKey, nil
+		})
+		if err != nil || !tkn.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error":"unauth"})
+			return
+		}
+		userId := claims.UserId
+		db := graphql.GetGlobalServerData().Db
+		
+		cart := products.Cart{}
+		res := db.Where("user_id = ?", userId).First(&cart)
+		if res.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H {"error":"cart not found"})
+			return
+		}
+		type bodyScheme struct {
+			ProductId uint
+		}
+		ginBody := c.Request.Body;
+		rowBody, errReader := io.ReadAll(ginBody)
+		if errReader != nil {
+			c.JSON(http.StatusTeapot, gin.H{"error": "Can't parse request body"})
+			return
+		}
+		body := bodyScheme{}
+		json.Unmarshal(rowBody, &body)
+		prodcutToAdd := products.Product{}
+		prodRes := db.First(&prodcutToAdd,body.ProductId)
+		if prodRes.Error != nil || prodRes.RowsAffected == 0 {
+			c.JSON(http.StatusInternalServerError, gin.H{"error":"error"})
+			return
+		}
+		cart.Product = append(cart.Product, &prodcutToAdd)
+		saveRes := db.Save(&cart)
+		if saveRes.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error":"error saving cart"})
+			return
+		}
+		c.JSON(http.StatusOK,gin.H{})
+	}
+}
+
+func PurcacheUserCart() gin.HandlerFunc {
 	return func(c *gin.Context) {}
 }
 
@@ -222,6 +297,7 @@ func main() {
 
 	userResolver.POST("/UserQuery", graphqlUserHandler())
 	userResolver.POST("/CreateReview", CreateReview())
+	userResolver.GET("/GetCart", GetUserCart())
 	adminResolver.POST("/AdminQuery", graphqlAdminHandler())
 
 	unauthResolver.GET("/GQLPlayground", graphqlPlaygroundHandler())
