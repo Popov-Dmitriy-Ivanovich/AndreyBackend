@@ -298,6 +298,7 @@ func main() {
 	userResolver.POST("/UserQuery", graphqlUserHandler())
 	userResolver.POST("/CreateReview", CreateReview())
 	userResolver.GET("/GetCart", GetUserCart())
+	userResolver.POST("/AddProduct", AddProductToCart())
 	adminResolver.POST("/AdminQuery", graphqlAdminHandler())
 
 	unauthResolver.GET("/GQLPlayground", graphqlPlaygroundHandler())
