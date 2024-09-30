@@ -4,6 +4,7 @@ import (
 	"backend/models/products"
 	"backend/models/users"
 	"encoding/json"
+	"errors"
 
 	// "go/token"
 	"graphql"
@@ -13,6 +14,7 @@ import (
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"gorm.io/gorm"
 
 	"time"
 )
@@ -42,65 +44,103 @@ func graphqlPlaygroundHandler() gin.HandlerFunc {
 }
 
 type Claims struct {
-	Username string `json:"username"`
-	UserId uint
-	IsAdmin  bool
+	// Username string `json:"username"`
+	UserId  uint
+	IsAdmin bool
 	jwt.RegisteredClaims
 }
 
-func generateJWT(isAdmin bool, userId uint) (string, error) {
+type ServerRoutes struct {
+	globalServerData *graphql.GlobalSingletonServerData
+	db               *gorm.DB
+	jwtKey           *[]byte
+}
+
+func (sr *ServerRoutes) getBody(c *gin.Context, result any) error {
+	//ginBody := c.Request.Body
+	rowBody, errReader := io.ReadAll(c.Request.Body)
+	if errReader != nil {
+		return errReader
+	}
+	json.Unmarshal(rowBody, result)
+	return nil
+}
+
+func (sr *ServerRoutes) getClaims(c *gin.Context) (Claims, error) {
+	token := c.Request.Header.Get("Authorization")
+	claims := Claims{}
+	tkn, err := jwt.ParseWithClaims(token, &claims, func(token *jwt.Token) (interface{}, error) {
+		return sr.jwtKey, nil
+	})
+	if err != nil {
+		return claims, err
+	}
+	if !tkn.Valid {
+		return claims, errors.New("auth token is invalid")
+	}
+	return claims, nil
+}
+
+func CreateServerRoutes() (ServerRoutes, error) {
+	globData := graphql.GetGlobalServerData()
+	sr := ServerRoutes{
+		globalServerData: globData,
+		db:               globData.Db,
+		jwtKey:           &globData.JwtKey,
+	}
+	return sr, nil
+}
+
+func (sr *ServerRoutes) generateJWT(isAdmin bool, userId uint) (string, error) {
 	expirationTime := time.Now().Add(5 * time.Minute)
 	claims := &Claims{
-		Username: "username",
-		IsAdmin:  isAdmin,
-		UserId: userId,
+		IsAdmin: isAdmin,
+		UserId:  userId,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(expirationTime),
 		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(graphql.GetGlobalServerData().JwtKey)
+	return token.SignedString(sr.jwtKey)
 }
 
-func Login(c *gin.Context) {
-	reqBody := c.Request.Body
-	type LoginData struct {
-		Login    string
-		Password string
-	}
+func (sr *ServerRoutes) Login() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		type LoginData struct {
+			Login    string
+			Password string
+		}
+		var body LoginData
+		errGettingBody := sr.getBody(c, &body)
+		if errGettingBody != nil {
+			c.JSON(http.StatusInternalServerError, errGettingBody)
+			return
+		}
 
-	var body LoginData
-	rowBody, errReader := io.ReadAll(reqBody)
-	if errReader != nil {
-		c.JSON(http.StatusTeapot, gin.H{"error": "Can't parse request body"})
-		return
+		user := users.User{}
+		userQueryRes := sr.db.Where("login = ?", body.Login).First(&user)
+		if userQueryRes.Error != nil || userQueryRes.RowsAffected == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			return
+		}
+		if body.Password != user.Password {
+			c.JSON(http.StatusForbidden, gin.H{"error": "wrong password"})
+			return
+		}
+		token, err := sr.generateJWT(user.IsAdmin, user.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
+			return
+		}
+		sr.globalServerData.Tokens.Mtx.Lock()
+		defer sr.globalServerData.Tokens.Mtx.Unlock()
+		sr.globalServerData.Tokens.Data = append(sr.globalServerData.Tokens.Data, token)
+		c.JSON(http.StatusOK, gin.H{"token": token})
 	}
-	json.Unmarshal(rowBody, &body)
-
-	globalServerData := graphql.GetGlobalServerData()
-	user := users.User{}
-	userQueryRes := globalServerData.Db.Where("login = ?", body.Login).First(&user)
-	if userQueryRes.Error != nil || userQueryRes.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-		return
-	}
-	if body.Password != user.Password {
-		c.JSON(http.StatusForbidden, gin.H{"error": "wrong password"})
-		return
-	}
-	token, err := generateJWT(user.IsAdmin, user.ID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
-		return
-	}
-	globalServerData.Tokens.Mtx.Lock()
-	defer globalServerData.Tokens.Mtx.Unlock()
-	globalServerData.Tokens.Data = append(globalServerData.Tokens.Data, token)
-	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
-func Register() gin.HandlerFunc {
+func (sr *ServerRoutes) Register() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		type RegisterData struct {
 			Name     string
@@ -108,15 +148,11 @@ func Register() gin.HandlerFunc {
 			Password string
 			Email    string
 		}
-		rowBody, errReader := io.ReadAll(c.Request.Body)
-		if errReader != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not parse body"})
-			return
-		}
-		registerData := RegisterData{}
-		json.Unmarshal(rowBody, &registerData)
 
-		db := graphql.GetGlobalServerData().Db
+		registerData := RegisterData{}
+		sr.getBody(c, registerData)
+
+		db := sr.db
 		res := db.Create(&users.User{Name: registerData.Name, Login: registerData.Login, Password: registerData.Password, Email: registerData.Email, IsActive: true})
 		if res.Error != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not create user"})
@@ -126,104 +162,83 @@ func Register() gin.HandlerFunc {
 	}
 }
 
-func AuthMiddleware(isAdmin bool) gin.HandlerFunc {
+func (sr *ServerRoutes) AuthMiddleware(isAdmin bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := c.Request.Header.Get("Authorization")
-		claims := Claims{}
-		tkn, err := jwt.ParseWithClaims(token, &claims, func(token *jwt.Token) (interface{}, error) {
-			return graphql.GetGlobalServerData().JwtKey, nil
-		})
+		claims, err := sr.getClaims(c)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not parse token"})
-			c.Abort()
-			return
-		}
-		if !tkn.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "unauthorized",
-			})
+			c.JSON(http.StatusBadRequest, err)
 			c.Abort()
 			return
 		}
 		if isAdmin && !claims.IsAdmin {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Admin role required"})
+			c.Abort()
+			return
 		}
 		c.Next()
 	}
 }
 
-func GetUserCart() gin.HandlerFunc {
+func (sr *ServerRoutes) GetUserCart() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		token := c.Request.Header.Get("Authorization")
-		claims := Claims{}
-		tkn, err := jwt.ParseWithClaims(token, &claims, func(token *jwt.Token) (interface{}, error) {
-			return graphql.GetGlobalServerData().JwtKey, nil
-		})
-		if err != nil || !tkn.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error":"unauth"})
+		claims, err := sr.getClaims(c)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, err)
 			return
 		}
+
 		userId := claims.UserId
-		db := graphql.GetGlobalServerData().Db
+		db := sr.db
 		cart := products.Cart{}
 		cartRes := db.Where("user_id = ?", userId).First(&cart)
 		if cartRes.Error != nil {
-			c.JSON(http.StatusInternalServerError,gin.H{"error":"could not find user cart"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not find user cart"})
 			return
 		}
 		prods := []*products.Product{}
 		prodRes := db.Model(&products.Product{}).Joins("inner join product_carts on products.id == product_carts.product_id").Where("cart_id = ?", cart.ID).Find(&prods)
 		if prodRes.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error":"db"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "db"})
 		}
 		c.JSON(http.StatusOK, prods)
 	}
 }
 
-func AddProductToCart() gin.HandlerFunc {
-	return func (c *gin.Context) {
-		token := c.Request.Header.Get("Authorization")
-		claims := Claims{}
-		tkn, err := jwt.ParseWithClaims(token, &claims, func(token *jwt.Token) (interface{}, error) {
-			return graphql.GetGlobalServerData().JwtKey, nil
-		})
-		if err != nil || !tkn.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error":"unauth"})
-			return
+func (sr *ServerRoutes) AddProductToCart() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		claims, err := sr.getClaims(c)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, err)
 		}
 		userId := claims.UserId
-		db := graphql.GetGlobalServerData().Db
-		
+		db := sr.db
+
 		cart := products.Cart{}
 		res := db.Where("user_id = ?", userId).First(&cart)
 		if res.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H {"error":"cart not found"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "cart not found"})
 			return
 		}
 		type bodyScheme struct {
 			ProductId uint
 		}
-		ginBody := c.Request.Body;
-		rowBody, errReader := io.ReadAll(ginBody)
-		if errReader != nil {
-			c.JSON(http.StatusTeapot, gin.H{"error": "Can't parse request body"})
-			return
-		}
+		
 		body := bodyScheme{}
-		json.Unmarshal(rowBody, &body)
+		sr.getBody(c, body)
+
 		prodcutToAdd := products.Product{}
-		prodRes := db.First(&prodcutToAdd,body.ProductId)
+		prodRes := db.First(&prodcutToAdd, body.ProductId)
 		if prodRes.Error != nil || prodRes.RowsAffected == 0 {
-			c.JSON(http.StatusInternalServerError, gin.H{"error":"error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error"})
 			return
 		}
 		cart.Product = append(cart.Product, &prodcutToAdd)
 		saveRes := db.Save(&cart)
 		if saveRes.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error":"error saving cart"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "error saving cart"})
 			return
 		}
-		c.JSON(http.StatusOK,gin.H{})
+		c.JSON(http.StatusOK, gin.H{})
 	}
 }
 
@@ -231,7 +246,7 @@ func PurcacheUserCart() gin.HandlerFunc {
 	return func(c *gin.Context) {}
 }
 
-func CreateReview() gin.HandlerFunc {
+func (sr *ServerRoutes) CreateReview() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		type RequestBody struct {
 			ProductID uint
@@ -239,16 +254,14 @@ func CreateReview() gin.HandlerFunc {
 			Text      string
 			Stars     uint
 		}
-		ginBody := c.Request.Body
-		rowBody, errReader := io.ReadAll(ginBody)
-		if errReader != nil {
-			c.JSON(http.StatusTeapot, gin.H{"error": "Can't parse request body"})
-			return
-		}
 		body := RequestBody{}
-		json.Unmarshal(rowBody, &body)
+		err := sr.getBody(c, &body)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, err)
+		}
+
 		user := users.User{}
-		db := graphql.GetGlobalServerData().Db
+		db := sr.db
 		res := db.First(&user, body.UserID)
 
 		if res.Error != nil || res.RowsAffected == 0 {
@@ -258,24 +271,24 @@ func CreateReview() gin.HandlerFunc {
 
 		user.Reviews = append(user.Reviews, products.Review{
 			ProductID: body.ProductID,
-			UserID: user.ID,
-			Text: body.Text,
-			Stars: body.Stars,
+			UserID:    user.ID,
+			Text:      body.Text,
+			Stars:     body.Stars,
 		})
 		resSave := db.Save(&user)
 		if resSave.Error != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error" : "could not save user"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save user"})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"message": "ok"})
 	}
 }
 
-func GetReview() gin.HandlerFunc {
+func (sr *ServerRoutes) GetReview() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		query := c.Request.URL.Query()
 		productId := query.Get("productId")
-		db := graphql.GetGlobalServerData().Db
+		db := sr.db
 		review := []products.Review{}
 		res := db.Where("product_id = ?", productId).Find(&review)
 		if res.Error != nil {
@@ -288,22 +301,28 @@ func GetReview() gin.HandlerFunc {
 
 func main() {
 	graphql.InitGlobalServerData()
-	// globalServerData := graphql.GetGlobalServerData()
+	
+	sr, error := CreateServerRoutes()
+
+	if error != nil {
+		panic("could not create server routes object")
+	}
+
 	resolver := gin.Default()
 
-	adminResolver := resolver.Group("/Admin", AuthMiddleware(true))
-	userResolver := resolver.Group("/User", AuthMiddleware(false))
+	adminResolver := resolver.Group("/Admin", sr.AuthMiddleware(true))
+	userResolver := resolver.Group("/User", sr.AuthMiddleware(false))
 	unauthResolver := resolver.Group("/")
 
 	userResolver.POST("/UserQuery", graphqlUserHandler())
-	userResolver.POST("/CreateReview", CreateReview())
-	userResolver.GET("/GetCart", GetUserCart())
-	userResolver.POST("/AddProduct", AddProductToCart())
+	userResolver.POST("/CreateReview", sr.CreateReview())
+	userResolver.GET("/GetCart", sr.GetUserCart())
+	userResolver.POST("/AddProduct", sr.AddProductToCart())
 	adminResolver.POST("/AdminQuery", graphqlAdminHandler())
 
 	unauthResolver.GET("/GQLPlayground", graphqlPlaygroundHandler())
-	unauthResolver.POST("/Login", Login)
-	unauthResolver.POST("/Register", Register())
-	unauthResolver.GET("/Review", GetReview())
+	unauthResolver.POST("/Login", sr.Login())
+	unauthResolver.POST("/Register", sr.Register())
+	unauthResolver.GET("/Review", sr.GetReview())
 	resolver.Run()
 }
