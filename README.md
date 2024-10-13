@@ -8,4 +8,4 @@ docker run -p 8080:8080 andreybackend
 ```
 
 user = postgress
-password = pgpass
+password = pgpassTEST
