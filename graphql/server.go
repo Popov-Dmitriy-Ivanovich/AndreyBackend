@@ -20,7 +20,7 @@ import (
 	// "github.com/99designs/gqlgen/graphql/playground"
 	// "github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"gorm.io/driver/sqlite"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 type MutexedData [T any] struct {
@@ -88,14 +88,15 @@ func InitGlobalServerData() error {
 	}
 
 	globalServerData.JwtKey = []byte(jwtKey)
-
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	dsn := "host=dev-pg-postgresql user=admin password=admin dbname=gorm port=5432 sslmode=disable"
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		return err
 	}
 	globalServerData.Db = db
 
 	db.AutoMigrate(
+		&users.User{},
 		&products.Product{},
 		&discounts.Discount{},
 		&productmedia.ProductMedia{},
@@ -107,8 +108,7 @@ func InitGlobalServerData() error {
 		&articles.Article{},
 		&articles.ArticleMedia{},
 		&discounts.Discount{},
-		&productmedia.ProductMedia{},
-		&users.User{},
+		&productmedia.ProductMedia{},		
 	)
 
 	userResolver := graph.Resolver{Db: db, IsAdmin: false}

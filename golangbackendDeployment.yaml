@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: golangbackend-deployment
+spec:
+  selector:
+    matchLabels:
+      app: golangbackend
+  replicas: 2 # tells deployment to run 2 pods matching the template
+  template:
+    metadata:
+      labels:
+        app: golangbackend
+    spec:
+      containers:
+      - name: golangbackend
+        image: docker.io/popovdmitriy/golangbackend:0.1.4
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080

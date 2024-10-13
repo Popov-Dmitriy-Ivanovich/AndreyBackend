@@ -6,3 +6,6 @@ docker buildx build -t andreybackend .
 ``` bash
 docker run -p 8080:8080 andreybackend
 ```
+
+user = postgress
+password = pgpass

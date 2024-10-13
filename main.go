@@ -62,8 +62,9 @@ func (sr *ServerRoutes) getBody(c *gin.Context, result any) error {
 	if errReader != nil {
 		return errReader
 	}
-	json.Unmarshal(rowBody, result)
-	return nil
+	//errUnmarshal := 
+	
+	return json.Unmarshal(rowBody, result)
 }
 
 func (sr *ServerRoutes) getClaims(c *gin.Context) (Claims, error) {
@@ -140,7 +141,7 @@ func (sr *ServerRoutes) Login() gin.HandlerFunc {
 	}
 }
 
-func (sr *ServerRoutes) Register() gin.HandlerFunc {
+func (sr *ServerRoutes) 	Register() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		type RegisterData struct {
 			Name     string
@@ -150,8 +151,11 @@ func (sr *ServerRoutes) Register() gin.HandlerFunc {
 		}
 
 		registerData := RegisterData{}
-		sr.getBody(c, registerData)
-
+		err := sr.getBody(c, &registerData)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,err)
+			return
+		}
 		db := sr.db
 		res := db.Create(&users.User{Name: registerData.Name, Login: registerData.Login, Password: registerData.Password, Email: registerData.Email, IsActive: true})
 		if res.Error != nil {
@@ -314,7 +318,7 @@ func main() {
 	userResolver := resolver.Group("/User", sr.AuthMiddleware(false))
 	unauthResolver := resolver.Group("/")
 
-	userResolver.POST("/UserQuery", graphqlUserHandler())
+	unauthResolver.POST("/UserQuery", graphqlUserHandler())
 	userResolver.POST("/CreateReview", sr.CreateReview())
 	userResolver.GET("/GetCart", sr.GetUserCart())
 	userResolver.POST("/AddProduct", sr.AddProductToCart())
